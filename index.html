@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Приватный Чат</title>
+    <script>
+        // =========================================================================
+        // НАСТРОЙКИ ЧАТА
+        // =========================================================================
+        const ACCESS_PASSWORD = "111"; 
+        const SUPABASE_URL = "https://eplkwqviuosbbsvepvxu.supabase.co"; 
+        const SUPABASE_KEY = "sb_publishable_EjNC06jpl9ZxTxBX2BkgGg_4VjqTGPk"; 
+        const EXPIRY_TIME = 100 * 60 * 60 * 1000; // 100 часов
+        // =========================================================================
+    </script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        html, body { height: 100%; background-color: #151515; color: #e0e0e0; overflow: hidden; }
+        body { display: flex; flex-direction: column; }
+        
+        /* Экран блокировки */
+        #lock-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #111; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 1000; }
+        #lock-screen input { background: #222; border: 1px solid #444; color: #fff; padding: 12px; text-align: center; margin-bottom: 12px; border-radius: 8px; font-size: 16px; outline: none; width: 240px; }
+        #lock-screen button { background: #444; border: none; color: #fff; padding: 10px 20px; cursor: pointer; border-radius: 8px; font-size: 15px; font-weight: bold; transition: background 0.2s; }
+        #lock-screen button:hover { background: #555; }
+        
+        /* Главный контейнер */
+        #main-content { display: none; flex-direction: column; height: 100%; width: 100%; }
+        
+        /* Шапка */
+        header { background-color: #1e1e1e; padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #2b2b2b; height: 55px; flex-shrink: 0; }
+        .controls { display: flex; align-items: center; gap: 8px; flex: 1; }
+        select { background: #2c2c2c; color: #e0e0e0; border: 1px solid #3d3d3d; padding: 6px 10px; border-radius: 6px; font-size: 13px; outline: none; max-width: 140px; cursor: pointer; }
+        button.sm-btn { background: #2c2c2c; color: #ccc; border: 1px solid #3d3d3d; padding: 6px 10px; font-size: 13px; cursor: pointer; border-radius: 6px; white-space: nowrap; transition: all 0.2s; }
+        button.sm-btn:hover { background: #3d3d3d; color: #fff; }
+        button.danger-btn { border-color: #553333; color: #b57c7c; }
+        button.danger-btn:hover { background: #442222; color: #ff9999; }
+        
+        /* Контейнер чата */
+        #chat-container { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 8px; background: #0f0f0f; -webkit-overflow-scrolling: touch; }
+        .day-header { text-align: center; font-size: 11px; color: #555; font-weight: bold; text-transform: uppercase; margin: 12px 0 6px 0; letter-spacing: 0.5px; }
+        
+        /* Облачка сообщений в стиле Telegram */
+        .comment-wrapper { display: flex; flex-direction: column; width: 100%; }
+        .comment { padding: 8px 12px; border-radius: 12px; max-width: 75%; word-break: break-word; line-height: 1.4; font-size: 14px; position: relative; cursor: pointer; user-select: none; transition: opacity 0.2s; }
+        
+        /* Чужие сообщения (Темно-красные) */
+        .comment.incoming { background: #552222; border: 1px solid #662222; color: #f5e0e0; align-self: flex-start; border-bottom-left-radius: 4px; }
+        /* Свои сообщения (Серые) */
+        .comment.outgoing { background: #333333; border: 1px solid #444444; color: #e0e0e0; align-self: flex-end; border-bottom-right-radius: 4px; }
+        .comment.sending { opacity: 0.6; }
+        
+        /* Плашка цитаты внутри сообщения при ответе */
+        .reply-box-in-msg { background: rgba(0,0,0,0.2); border-left: 3px solid #888; padding: 4px 6px; margin-bottom: 6px; border-radius: 4px; font-size: 12px; color: #aaa; max-height: 50px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .comment.incoming .reply-box-in-msg { border-left-color: #ff9999; }
+        
+        /* Метаданные (Время + иконки статуса) */
+        .comment-meta { display: flex; justify-content: flex-end; align-items: center; gap: 4px; font-size: 10px; color: #888; margin-top: 4px; text-align: right; }
+        .comment.incoming .comment-meta { color: #aa8888; }
+        
+        /* Панель превью действия над текстовым полем */
+        #action-preview-bar { display: none; background: #1a1a1a; border-top: 1px solid #2b2b2b; padding: 8px 12px; align-items: center; justify-content: space-between; font-size: 13px; }
+        #action-preview-text { color: #aaa; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 80%; }
+        #action-preview-close { color: #ff5555; cursor: pointer; font-weight: bold; font-size: 16px; padding: 0 4px; }
+        
+        /* Нижний блок ввода */
+        footer { background: #1e1e1e; padding: 10px 12px; display: flex; gap: 8px; border-top: 1px solid #2b2b2b; align-items: center; height: 60px; flex-shrink: 0; }
+        footer textarea { flex: 1; background: #2a2a2a; border: 1px solid #3d3d3d; color: #fff; padding: 10px; border-radius: 8px; resize: none; height: 40px; font-size: 14px; outline: none; }
+        footer textarea:focus { border-color: #555; }
+        footer button { background: #333; border: 1px solid #444; color: #fff; height: 40px; padding: 0 16px; font-size: 14px; cursor: pointer; border-radius: 8px; font-weight: bold; transition: background 0.2s; }
+        footer button:hover { background: #444; }
+        
+        /* Всплывающее меню действий */
+        #context-menu { display: none; position: fixed; background: #222; border: 1px solid #3d3d3d; border-radius: 8px; z-index: 2000; box-shadow: 0 4px 12px rgba(0,0,0,0.5); overflow: hidden; }
+        .context-item { padding: 10px 16px; font-size: 14px; color: #eee; cursor: pointer; transition: background 0.2s; }
+        .context-item:hover { background: #333; }
+        .context-item.danger { color: #ff6666; }
+        .context-item.danger:hover { background: #442222; }
+    </style>
+</head>
+<body>
+    <div id="lock-screen">
+        <input type="password" id="pass-input" placeholder="Введите пароль" onkeydown="if(event.key==='Enter')checkPassword()">
+        <button onclick="checkPassword()">Войти</button>
+    </div>
+
+    <div id="main-content">
+        <header>
+            <div class="controls">
+                <button class="sm-btn" onclick="createNewPage()">+ Новая комната</button>
+                <button class="sm-btn" onclick="connectPage()">+ Подключить ID</button>
+                <select id="page-select" onchange="switchPage()"></select>
+            </div>
+            <button class="sm-btn danger-btn" onclick="clearCurrentPage()">Скрыть</button>
+        </header>
+
+        <div id="chat-container" onclick="closeContextMenu()"></div>
+
+        <!-- Плашка режимов (Ответ / Редактирование) -->
+        <div id="action-preview-bar">
+            <span id="action-preview-text"></span>
+            <span id="action-preview-close" onclick="cancelCurrentAction()">&times;</span>
+        </div>
+
+        <footer>
+            <textarea id="comment-input" placeholder="Напишите сообщение..." onkeydown="handleKeyDown(event)"></textarea>
+            <button id="send-btn" onclick="addComment()">Отправить</button>
+        </footer>
+    </div>
+    <!-- Всплывающий контекстный блок действий -->
+    <div id="context-menu">
+        <div class="context-item" onclick="triggerReply()">Ответить</div>
+        <div class="context-item id-only-my" id="ctx-edit" onclick="triggerEdit()">Редактировать</div>
+        <div class="context-item danger id-only-my" id="ctx-delete" onclick="triggerDelete()">Удалить</div>
+    </div>
+
+    <script>
+        if (!localStorage.getItem("chat_user_id")) {
+            localStorage.setItem("chat_user_id", "usr_" + Math.random().toString(36).substr(2, 9));
+        }
+        const MY_USER_ID = localStorage.getItem("chat_user_id");
+
+        class MiniSupabase {
+            constructor(url, key) {
+                this.url = url ? url.replace(/\/\$/, "") : "";
+                this.key = key;
+            }
+            async request(path, method = 'GET', body = null) {
+                if (!this.url || !this.key) throw new Error("Ключи не заполнены!");
+                const headers = { 'apikey': this.key, 'Authorization': `Bearer ${this.key}`, 'Content-Type': 'application/json' };
+                if (method === 'POST' || method === 'PATCH') headers['Prefer'] = 'return=minimal';
+                const config = { method, headers };
+                if (body) config.body = JSON.stringify(body);
+                const response = await fetch(`${this.url}/rest/v1/${path}`, config);
+                if (!response.ok) { const errText = await response.text(); throw new Error(errText || response.statusText); }
+                if (method === 'POST' || method === 'DELETE' || method === 'PATCH') return response.status;
+                return await response.json();
+            }
+            from(table) {
+                return {
+                    select: () => ({
+                        gt: (field, val) => ({
+                            eq: (eqField, eqVal) => ({
+                                order: async (sortField, { ascending }) => {
+                                    const dir = ascending ? 'asc' : 'desc';
+                                    return await this.request(`${table}?${field}=gt.${val}&${eqField}=eq.${encodeURIComponent(eqVal)}&order=${sortField}.${dir}`);
+                                }
+                            })
+                        })
+                    }),
+                    insert: async (rows) => { return await this.request(table, 'POST', rows); },
+                    update: (changes) => ({
+                        eq: async (field, val) => { return await this.request(`${table}?${field}=eq.${encodeURIComponent(val)}`, 'PATCH', changes); }
+                    }),
+                    delete: () => ({
+                        eq: async (field, val) => { return await this.request(`${table}?${field}=eq.${encodeURIComponent(val)}`, 'DELETE'); }
+                    })
+                };
+            }
+        }
+
+        let client;
+        let currentPage = localStorage.getItem("chat_current_page") || "Главная";
+        let localPages = JSON.parse(localStorage.getItem("chat_pages_list")) || ["Главная"];
+        let allComments = [];
+        let selectedCommentId = null;
+        let currentMode = "normal"; 
+        let activeReplyToText = "";
+        const daysOfWeek = ["Воскресенье", "Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота"];
+
+        function checkPassword() {
+            const input = document.getElementById("pass-input").value;
+            if (input === ACCESS_PASSWORD) {
+                document.getElementById("lock-screen").style.display = "none";
+                document.getElementById("main-content").style.display = "flex";
+                setTimeout(initApp, 100);
+            } else {
+                alert("Неверный пароль");
+            }
+        }
+
+        async function initApp() {
+            try {
+                client = new MiniSupabase(SUPABASE_URL, SUPABASE_KEY);
+                renderPageSelect();
+                await loadComments();
+                setInterval(loadComments, 4000);
+            } catch (e) {
+                console.error(e);
+            }
+        }
+        async function loadComments() {
+            try {
+                const cutoffTime = Date.now() - EXPIRY_TIME;
+                const data = await client.from('comments').select().gt('timestamp', cutoffTime).eq('page_name', currentPage).order('timestamp', { ascending: true });
+                const serverComments = data || [];
+                const localSending = allComments.filter(c => c.sending);
+                const filteredSending = localSending.filter(lc => !serverComments.some(sc => sc.id === lc.id));
+                allComments = [...serverComments, ...filteredSending];
+                renderComments();
+            } catch (err) {
+                console.log("Ожидание сети...");
+            }
+        }
+
+        function renderComments() {
+            const container = document.getElementById("chat-container");
+            const scrolledToBottom = container.scrollHeight - container.clientHeight <= container.scrollTop + 50;
+            container.innerHTML = "";
+            let lastDateStr = "";
+
+            allComments.forEach(comment => {
+                const date = new Date(comment.timestamp);
+                const dateStr = date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+                if (dateStr !== lastDateStr) {
+                    const dayHeader = document.createElement("div");
+                    dayHeader.className = "day-header";
+                    dayHeader.innerText = `${dateStr}, ${daysOfWeek[date.getDay()]}`;
+                    container.appendChild(dayHeader);
+                    lastDateStr = dateStr;
+                }
+
+                const wrapper = document.createElement("div");
+                wrapper.className = "comment-wrapper";
+                const msgDiv = document.createElement("div");
+                const isMy = comment.user_id === MY_USER_ID;
+                msgDiv.className = `comment ${isMy ? 'outgoing' : 'incoming'}`;
+                if (comment.sending) msgDiv.classList.add('sending');
+                if (comment.reply_to) {
+                    const replyBox = document.createElement("div");
+                    replyBox.className = "reply-box-in-msg";
+                    replyBox.innerText = `↪ ${escapeHTML(comment.reply_to)}`;
+                    msgDiv.appendChild(replyBox);
+                }
+
+                const textSpan = document.createElement("span");
+                textSpan.innerText = comment.text;
+                msgDiv.appendChild(textSpan);
+
+                const metaDiv = document.createElement("div");
+                metaDiv.className = "comment-meta";
+                const timeStr = date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+                let statusIcon = "";
+                if (isMy) {
+                    if (comment.sending) {
+                        statusIcon = " ⏳";
+                    } else {
+                        const isRead = (Date.now() - comment.timestamp) > 5000;
+                        statusIcon = isRead ? " ✓✓" : " ✓";
+                    }
+                    if (comment.edited) statusIcon = " (изм.)" + statusIcon;
+                } else if (comment.edited) {
+                    statusIcon = " (изм.)";
+                }
+                metaDiv.innerText = timeStr + statusIcon;
+                msgDiv.appendChild(metaDiv);
+
+                msgDiv.addEventListener("click", (e) => {
+                    e.stopPropagation();
+                    openContextMenu(e, comment.id, comment.user_id, comment.text);
+                });
+                wrapper.appendChild(msgDiv);
+                container.appendChild(wrapper);
+            });
+            if (scrolledToBottom) container.scrollTop = container.scrollHeight;
+        }
+
+        function handleKeyDown(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                addComment();
+            }
+        }
+        async function addComment() {
+            const input = document.getElementById("comment-input");
+            const text = input.value.trim();
+            if (!text) return;
+            input.value = "";
+
+            if (currentMode === "edit") {
+                const targetIdx = allComments.findIndex(c => c.id === selectedCommentId);
+                let oldText = "";
+                if (targetIdx !== -1) {
+                    oldText = allComments[targetIdx].text;
+                    allComments[targetIdx].text = text;
+                    allComments[targetIdx].edited = true;
+                    renderComments();
+                }
+                const editId = selectedCommentId;
+                cancelCurrentAction();
+                try {
+                    await client.from('comments').update({ text: text, edited: true }).eq('id', editId);
+                } catch (err) {
+                    if (targetIdx !== -1) { allComments[targetIdx].text = oldText; renderComments(); }
+                }
+                return;
+            }
+
+            const tempId = "temp_" + Date.now();
+            const newComment = {
+                id: tempId, timestamp: Date.now(), text: text,
+                user_id: MY_USER_ID, page_name: currentPage,
+                reply_to: currentMode === "reply" ? activeReplyToText : null, sending: true
+            };
+            allComments.push(newComment);
+            renderComments();
+            document.getElementById("chat-container").scrollTop = document.getElementById("chat-container").scrollHeight;
+
+            const payload = { timestamp: newComment.timestamp, text: newComment.text, page_name: newComment.page_name, reply_to: newComment.reply_to };
+            if (MY_USER_ID) payload.user_id = MY_USER_ID;
+            cancelCurrentAction();
+            try {
+                await client.from('comments').insert([payload]);
+                const localMsg = allComments.find(c => c.id === tempId);
+                if (localMsg) { localMsg.sending = false; renderComments(); }
+            } catch (err) {
+                allComments = allComments.filter(c => c.id !== tempId);
+                renderComments();
+            }
+        }
+
+        function openContextMenu(e, id, userId, text) {
+            selectedCommentId = id; activeReplyToText = text;
+            const menu = document.getElementById("context-menu");
+            menu.style.display = "block";
+            menu.style.top = `${Math.min(e.clientY, window.innerHeight - 130)}px`;
+            menu.style.left = `${Math.min(e.clientX, window.innerWidth - 160)}px`;
+            document.querySelectorAll(".id-only-my").forEach(el => {
+                el.style.display = (userId === MY_USER_ID) ? "block" : "none";
+            });
+        }
+
+        function closeContextMenu() { document.getElementById("context-menu").style.display = "none"; }
+        function triggerReply() { currentMode = "reply"; document.getElementById("action-preview-bar").style.display = "flex"; document.getElementById("action-preview-text").innerText = `Ответ на: "${activeReplyToText}"`; closeContextMenu(); document.getElementById("comment-input").focus(); }
+        function triggerEdit() { currentMode = "edit"; document.getElementById("action-preview-bar").style.display = "flex"; document.getElementById("action-preview-text").innerText = `Редактирование: "${activeReplyToText}"`; document.getElementById("comment-input").value = activeReplyToText; closeContextMenu(); document.getElementById("comment-input").focus(); }
+
+        async function triggerDelete() {
+            closeContextMenu();
+            if (!confirm("Удалить это сообщение?")) return;
+            const deleteId = selectedCommentId;
+            allComments = allComments.filter(c => c.id !== deleteId);
+            renderComments();
+            try { await client.from('comments').delete().eq('id', deleteId); } catch (err) { loadComments(); }
+        }
+
+        function cancelCurrentAction() { currentMode = "normal"; activeReplyToText = ""; document.getElementById("action-preview-bar").style.display = "none"; document.getElementById("comment-input").value = ""; }
+        function renderPageSelect() { const select = document.getElementById("page-select"); select.innerHTML = ""; localPages.forEach(p => { const opt = document.createElement("option"); opt.value = p; opt.innerText = p.length > 12 ? p.substr(0,10) + "..." : p; if (p === currentPage) opt.selected = true; select.appendChild(opt); }); }
+        function createNewPage() { const name = prompt("Введите название для новой секретной комнаты:"); if (!name || name.trim() === "") return; const secretHash = Math.random().toString(36).substring(2, 7); const fullSecretName = `${name.trim()}-${secretHash}`; if (!localPages.includes(fullSecretName)) { localPages.push(fullSecretName); savePagesState(fullSecretName); } alert(`Секретная страница создана!\n\nСкопируйте и отправьте этот код другу для подключения:\n${fullSecretName}`); }
+        function connectPage() { const code = prompt("Вставьте секретный код страницы, который вам прислали:"); if (!code || !code.trim()) return; const cleanCode = code.trim(); if (!localPages.includes(cleanCode)) { localPages.push(cleanCode); } savePagesState(cleanCode); }
+        function savePagesState(targetPage) { localStorage.setItem("chat_pages_list", JSON.stringify(localPages)); localStorage.setItem("chat_current_page", targetPage); currentPage = targetPage; renderPageSelect(); allComments = []; renderComments(); loadComments(); }
+        function switchPage() { currentPage = document.getElementById("page-select").value; localStorage.setItem("chat_current_page", currentPage); cancelCurrentAction(); allComments = []; renderComments(); loadComments(); }
+        function clearCurrentPage() { if (confirm(`Убрать страницу "${currentPage}" из быстрого списка? (Сообщения останутся в базе)`)) { localPages = localPages.filter(p => p !== currentPage); if (localPages.length === 0) localPages = ["Главная"]; savePagesState(localPages); } }
+        function escapeHTML(str) { return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "'"); }
+        window.addEventListener("click", closeContextMenu);
+    </script>
+</body>
+</html>
